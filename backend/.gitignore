@@ -1,9 +1,11 @@
-*.js
+app-stack.js
 !jest.config.js
 *.d.ts
 node_modules
-*.env
-lib/.env
+target
+*.lock
+.env
+
 # CDK asset staging directory
 .cdk.staging
 cdk.out
