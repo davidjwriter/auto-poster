@@ -22,6 +22,12 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 - PostToX Lambda: function that subscribes to an SNS topic, posts the post to X
 - SendPost Lambda: function that runs every hour, takes a post from DB, sends to the SNS topic, then deletes post from DB
 
+# Prompt
+
+The prompt we'll be using to generate posts is as follows:
+
+Create 36 powerful short Tweets that inspire conversation from this article. Respond with the Tweets in JSON format like this: {"tweets": ["post": <tweet>, "type": <POST or THREAD>]}
+
 ## Requirements
 
 - 1 DynamoDB Table

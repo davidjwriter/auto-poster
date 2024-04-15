@@ -27,9 +27,12 @@ use dotenv::dotenv;
 use std::any::Any;
 use std::str::FromStr;
 use xml::reader::{EventReader, XmlEvent};
+use regex::Regex;
 
 
-const PROMPT: &str = "Parse the recipe from the web page content and format it in JSON with the following structure: {name: <str>, ingredients: [], instructions: [], notes: <str>, summary: <str>}. If the words don't have spaces, add spaces so it's readable. Ensure the ingredients and instructions are a list of strings, if they have sections, just add the header as an item in the list.";
+const PROMPT: &str = "Create 12 powerful short Tweets that 
+inspire conversation from this article. Respond with the 
+Tweets in JSON format like this: {posts: [post: <str>]}";
 
 #[derive(Debug, Serialize)]
 pub struct SuccessResponse {
@@ -51,8 +54,7 @@ pub enum ContentType {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Post {
-    pub post: String,
-    pub content_type: ContentType
+    pub post: String
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -77,6 +79,19 @@ async fn main() -> Result<(), Error> {
     lambda_runtime::run(func).await?;
 
     Ok(())
+}
+
+async fn cleanup(content: String) -> Result<String, FailureResponse> {
+    // Remove xml tags
+    let re = Regex::new(r"<[^>]*>").unwrap();
+    let cleanup_string = re.replace_all(content.as_str(), "");
+
+    // Remove articles
+    let pattern = r"\b(?:a|an|the|this|that|these|those|it|he|she|they|them)\b";
+    let re = Regex::new(pattern).unwrap();
+
+    let final_string = re.replace_all(cleanup_string.as_ref(), "");
+    Ok(final_string.to_string())
 }
 
 async fn get_current_newsletter_content(url: &str) -> Result<SuccessResponse, FailureResponse> {
@@ -167,7 +182,6 @@ async fn generate_posts(contents: String) -> Result<Posts, FailureResponse> {
                 });
             }
         };
-        println!("{:?}", result.choices[0].message.content);
         let generated_content = match &result.choices[0].message.content {
             Some(c) => c,
             None => {
@@ -180,12 +194,13 @@ async fn generate_posts(contents: String) -> Result<Posts, FailureResponse> {
         let content = match extract_json(&generated_content) {
             Some(s) => s,
             None => {
-                println!("Error parsing recipe conents!");
+                println!("Error parsing posts conents!");
                 return Err(FailureResponse {
-                    body: format!("Error parsing recipe contents!")
+                    body: format!("Error parsing posts contents!")
                 });            
             },
         };
+        println!("\n\nContent: {:?}\n\n", content);
         let posts: Posts = match serde_json::from_str(&content) {
             Ok(r) => r,
             Err(e) => {
@@ -219,7 +234,7 @@ pub async fn add_to_db(posts: Posts) -> Result<String, Error> {
 fn extract_json(json_string: &str) -> Option<String> {
     // Find the positions of the first opening and closing curly braces
     let start_pos = json_string.find('{');
-    let end_pos = json_string.find('}');
+    let end_pos = json_string.rfind('}');
 
     if let (Some(start), Some(end)) = (start_pos, end_pos) {
         // Extract the content between the curly braces, including the braces themselves
@@ -253,11 +268,25 @@ mod tests {
     }
 
     #[test]
-    fn get_newsletter_content() {
+    fn test_get_newsletter_content() {
         let url = "https://davidjmeyer.substack.com/feed";
 
-        let response = aw!(get_current_newsletter_content(url));
-        println!("Response: {:?}", response);
+        let response = aw!(get_current_newsletter_content(url)).unwrap().body;
+
+        // println!("Response: {:?}", response);
+
+        let cleanup = aw!(cleanup(response)).unwrap();
+        println!("Response: {:?}", cleanup);
+    }
+
+    #[test]
+    fn test_generate_posts() {
+        dotenv::from_filename("../../.env").ok();
+        let url = "https://davidjmeyer.substack.com/feed";
+        let content = aw!(get_current_newsletter_content(url)).unwrap().body;
+        let clean_content = aw!(cleanup(content)).unwrap();
+        let posts = aw!(generate_posts(clean_content));
+        println!("Posts: {:?}", posts);
     }
 
 }
