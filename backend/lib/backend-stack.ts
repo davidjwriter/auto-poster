@@ -54,19 +54,14 @@ export class AutoPosterStack extends Stack {
     // Create an SNS topic and subscribe the postToTwitter and postToDeso lambdas
     const postTopic = new sns.Topic(this, 'NewPostTopic');
 
-    // Event triggered Lambdas: generatePosts and sendPosts
-    const generatePosts = new Function(this, 'generatePosts', {
-      description: "Generates new posts and calls addPost API",
-      code: Code.fromAsset('lib/lambdas/generatePosts/target/x86_64-unknown-linux-musl/release/lambda'),
-      runtime: Runtime.PROVIDED_AL2,
-      handler: 'not.required',
-      timeout: Duration.minutes(5),
-      environment: {
-        RUST_BACKTRACE: '1',
-        OPEN_AI_API_KEY: openAiApiKey
-      },
-      logRetention: RetentionDays.ONE_WEEK,
-      role: lambdaRole
+    // Create an API Gateway resource for each of the CRUD operations
+    const api = new RestApi(this, 'PostAPI', {
+      restApiName: 'Post API',
+      defaultCorsPreflightOptions: {
+        allowOrigins: Cors.ALL_ORIGINS,
+        allowMethods: Cors.ALL_METHODS,
+        allowHeaders: Cors.DEFAULT_HEADERS,
+      }
     });
 
     const sendPosts = new Function(this, 'sendPosts', {
@@ -86,10 +81,6 @@ export class AutoPosterStack extends Stack {
 
     postTopic.grantPublish(sendPosts);
     dynamoTable.grantReadWriteData(sendPosts);
-    const generateEvent = new Rule(this, 'generateEvent', {
-      schedule: Schedule.expression('rate(1 week)'),
-    });
-    generateEvent.addTarget(new LambdaFunction(generatePosts));
     const postEvent = new Rule(this, 'postEvent', {
       schedule: Schedule.expression('rate(1 hour)'),
     });
@@ -111,6 +102,32 @@ export class AutoPosterStack extends Stack {
     });
 
     dynamoTable.grantWriteData(addPost);
+
+    // Integrate lambda functions with an API gateway
+    const addPostAPI = new LambdaIntegration(addPost);
+
+    const add = api.root.addResource('add');
+    add.addMethod('POST', addPostAPI);
+
+    // Event triggered Lambdas: generatePosts and sendPosts
+    const generatePosts = new Function(this, 'generatePosts', {
+      description: "Generates new posts and calls addPost API",
+      code: Code.fromAsset('lib/lambdas/generatePosts/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      timeout: Duration.minutes(5),
+      environment: {
+        RUST_BACKTRACE: '1',
+        OPEN_AI_API_KEY: openAiApiKey,
+        ADD_TO_DB_API: api.url
+      },
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
+    });
+    const generateEvent = new Rule(this, 'generateEvent', {
+      schedule: Schedule.expression('rate(1 week)'),
+    });
+    generateEvent.addTarget(new LambdaFunction(generatePosts));
 
     // 2 Lambda function subscribers
 
@@ -150,22 +167,6 @@ export class AutoPosterStack extends Stack {
     postTopic.addSubscription(new LambdaSubscription(postToTwitter));
     postTopic.addSubscription(new LambdaSubscription(postToDeso));
 
-
-    // Create an API Gateway resource for each of the CRUD operations
-    const api = new RestApi(this, 'PostAPI', {
-      restApiName: 'Post API',
-      defaultCorsPreflightOptions: {
-        allowOrigins: Cors.ALL_ORIGINS,
-        allowMethods: Cors.ALL_METHODS,
-        allowHeaders: Cors.DEFAULT_HEADERS,
-      }
-    });
-
-    // Integrate lambda functions with an API gateway
-    const addPostAPI = new LambdaIntegration(addPost);
-
-    const add = api.root.addResource('add');
-    add.addMethod('POST', addPostAPI);
   }
 }
 
