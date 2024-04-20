@@ -125,7 +125,7 @@ export class AutoPosterStack extends Stack {
       role: lambdaRole
     });
     const generateEvent = new Rule(this, 'generateEvent', {
-      schedule: Schedule.expression('rate(1 week)'),
+      schedule: Schedule.rate(Duration.days(7)),
     });
     generateEvent.addTarget(new LambdaFunction(generatePosts));
 
