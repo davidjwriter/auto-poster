@@ -28,11 +28,15 @@ use std::any::Any;
 use std::str::FromStr;
 use xml::reader::{EventReader, XmlEvent};
 use regex::Regex;
+use reqwest;
+use tiktoken_rs::cl100k_base;
 
 
 const PROMPT: &str = "Create 12 powerful short Tweets that 
 inspire conversation from this article. Respond with the 
 Tweets in JSON format like this: {posts: [post: <str>]}";
+
+const MAX_TOKENS: usize = 7500;
 
 #[derive(Debug, Serialize)]
 pub struct SuccessResponse {
@@ -86,12 +90,10 @@ async fn cleanup(content: String) -> Result<String, FailureResponse> {
     let re = Regex::new(r"<[^>]*>").unwrap();
     let cleanup_string = re.replace_all(content.as_str(), "");
 
-    // Remove articles
-    let pattern = r"\b(?:a|an|the|this|that|these|those|it|he|she|they|them)\b";
-    let re = Regex::new(pattern).unwrap();
-
-    let final_string = re.replace_all(cleanup_string.as_ref(), "");
-    Ok(final_string.to_string())
+    let bpe = cl100k_base().unwrap();
+    let tokens = bpe.encode_with_special_tokens(&cleanup_string);
+    println!("Token length after cleanup: {}", tokens.len());
+    Ok(cleanup_string.to_string())
 }
 
 async fn get_current_newsletter_content(url: &str) -> Result<SuccessResponse, FailureResponse> {
@@ -137,6 +139,9 @@ async fn get_current_newsletter_content(url: &str) -> Result<SuccessResponse, Fa
             _ => {}
         }
     }
+    let bpe = cl100k_base().unwrap();
+    let tokens = bpe.encode_with_special_tokens(&result);
+    println!("Token length before cleanup: {}", tokens.len());
     
     return Ok(SuccessResponse {
         body: result
@@ -147,18 +152,55 @@ async fn get_api_key() -> Option<String> {
     env::var("OPEN_AI_API_KEY").ok()
 }
 
+async fn get_add_to_db_url_api() -> Option<String> {
+    env::var("ADD_TO_DB_API").ok()
+}
+
 async fn generate_posts(contents: String) -> Result<Posts, FailureResponse> {
+    // Get our OpenAI API Key
     let open_ai_api_key = get_api_key().await;
+
+    // Create a list of all our message requests to send
+    let mut messages: Vec<chat_completion::ChatCompletionMessage> = Vec::new();
+    
+    // Determine the number of tokens used in our request
+    // If they are more than our max capacity, then
+    // split the string into multiple messages
+    // otherwise send the full contents
+    let bpe = cl100k_base().unwrap();
+    let tokens = bpe.encode_with_special_tokens(&contents);
+    if tokens.len() > MAX_TOKENS {
+        let chunks = (tokens.len() + MAX_TOKENS - 1) / MAX_TOKENS;
+        let chunk_size = (contents.len() + chunks - 1) / chunks;
+        
+        let content_chunks: Vec<String> = contents
+            .chars()
+            .collect::<Vec<_>>() // Collect into a vector of characters
+            .chunks(chunk_size) // Split into chunks of desired size
+            .map(|chunk| chunk.iter().collect()) // Convert back to strings
+            .collect();
+        for (_i, content_chunk) in content_chunks.iter().enumerate() {
+            messages.push(chat_completion::ChatCompletionMessage {
+                role: chat_completion::MessageRole::user,
+                content: format!("{} {}", PROMPT.to_string(), content_chunk),
+                name: None,
+                function_call: None,
+            });
+        }
+    } else {
+        messages.push(chat_completion::ChatCompletionMessage {
+            role: chat_completion::MessageRole::user,
+            content: format!("{} {}", PROMPT.to_string(), contents),
+            name: None,
+            function_call: None,
+        });
+    }
+
     if let Some(api_key) = open_ai_api_key {
         let client = api::Client::new(api_key);
         let req = ChatCompletionRequest {
             model: chat_completion::GPT4.to_string(),
-            messages: vec![chat_completion::ChatCompletionMessage {
-                role: chat_completion::MessageRole::user,
-                content: format!("{} {}", PROMPT.to_string(), contents),
-                name: None,
-                function_call: None,
-            }],
+            messages: messages,
             functions: None,
             function_call: None,
             temperature: None,
@@ -228,7 +270,14 @@ async fn generate_uuid() -> String {
  * Calls our add to db API
  */
 pub async fn add_to_db(posts: Posts) -> Result<String, Error> {
-    Ok(String::from("Ok"))
+    let uri = get_add_to_db_url_api().await.unwrap();
+    let client = reqwest::Client::new();
+    let response = client
+        .post(uri)
+        .json(&posts)
+        .send()
+        .await.unwrap();
+    Ok(String::from(format!("{:?}", response)))
 }
 
 fn extract_json(json_string: &str) -> Option<String> {
@@ -249,11 +298,21 @@ fn extract_json(json_string: &str) -> Option<String> {
 
 async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
     // 1. First retrieve the current contents of our newsletters
+    let url = "https://davidjmeyer.substack.com/feed";
+    let contents = get_current_newsletter_content(url).await;
 
-    // 2. Generate content
-
-    // 3. Upload to the DB
-
+    match contents {
+        Ok(c) => {
+            // Generate content
+            match generate_posts(c.body).await {
+                Ok(p) => add_to_db(p).await,
+                Err(e) => return Ok(format!("Failed: {:?}", e.to_string())),
+            };
+        },
+        Err(e) => {
+            return Ok(format!("Failed: {:?}", e.to_string()));
+        }
+    }
     Ok("Success!".to_string())
 }
 

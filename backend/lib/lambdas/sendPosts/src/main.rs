@@ -1,3 +1,233 @@
-fn main() {
-    println!("Hello, world!");
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use futures_util::future::join_all;
+use reqwest::get;
+use select::document::Document;
+use select::predicate::Name;
+use uuid::Uuid;
+use std::env;
+use openai_api_rs::v1::api;
+use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
+use openai_api_rs::v1::image::ImageGenerationRequest;
+use openai_api_rs::v1::error::APIError;
+use scraper::{Html, Selector};
+use lambda_http::{Response, Body, Error, Request};
+use lambda_runtime::handler_fn;
+use tokio::fs::File;
+use tokio::time::Duration;
+use tokio::fs::File as AsyncFile;
+use tokio_util::codec::{BytesCodec, FramedRead};
+use std::path::Path;
+use std::io::prelude::*;
+use base64;
+use tokio::io::AsyncWriteExt;
+use dotenv::dotenv;
+use std::any::Any;
+use std::str::FromStr;
+use reqwest;
+use aws_sdk_sns::Client as SnsClient;
+use aws_config::{meta::region::RegionProviderChain, SdkConfig};
+use aws_sdk_dynamodb::{config::Region, meta::PKG_VERSION};
+use aws_sdk_dynamodb::Client as DbClient;
+use aws_sdk_dynamodb::types::{AttributeValue};
+use aws_sdk_dynamodb::operation::get_item::GetItemInput;
+use lambda_runtime::{LambdaEvent};
+use std::fmt;
+use std::error::Error as StdError;
+
+
+#[derive(Debug)]
+pub struct Opt {
+    /// The AWS Region.
+    pub region: Option<String>,
+    /// Whether to display additional information.
+    pub verbose: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub body: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FailureResponse {
+    pub body: String,
+}
+
+type WorkerResponse = Result<SuccessResponse, FailureResponse>;
+
+// Error handling
+#[derive(Debug)]
+struct MyError {
+    message: String,
+}
+
+impl StdError for MyError {}
+
+impl MyError {
+    fn new(message: &str) -> MyError {
+        MyError {
+            message: String::from(message)
+        }
+    }
+}
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum ContentType {
+    POST,
+    THREAD
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Post {
+    pub uuid: String,
+    pub post: String
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Posts {
+    pub posts: Vec<Post>
+}
+
+// Implement Display for the Failure response so that we can then implement Error.
+impl std::fmt::Display for FailureResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.body)
+    }
+}
+
+pub async fn make_config(opt: Opt) -> Result<SdkConfig, Error> {
+    let region_provider = make_region_provider(opt.region);
+
+    println!();
+    if opt.verbose {
+        println!("DynamoDB client version: {}", PKG_VERSION);
+        println!(
+            "Region:                  {}",
+            region_provider.region().await.unwrap().as_ref()
+        );
+        println!();
+    }
+
+    Ok(aws_config::from_env().region(region_provider).load().await)
+}
+
+pub fn make_region_provider(region: Option<String>) -> RegionProviderChain {
+    RegionProviderChain::first_try(region.map(Region::new))
+        .or_default_provider()
+        .or_else(Region::new("us-east-1"))
+}
+
+async fn get_table_name() -> Option<String> {
+    env::var("TABLE_NAME").ok()
+}
+
+async fn get_sns_arn() -> Option<String> {
+    env::var("SNS_ARN").ok()
+}
+
+async fn delete_post_from_db(client: &DbClient, table_name: &str, uuid: String) -> Result<(), Error> {
+    let pk = AttributeValue::S(uuid);
+
+    client.delete_item()
+        .table_name(table_name)
+        .key("uuid".to_string(), pk)
+        .send().await?;
+
+    Ok(())
+}
+
+async fn get_new_post_from_db(client: &DbClient, table_name: &str) -> Result<Post, Error> {
+    let response = client.query()
+        .table_name(table_name)
+        .limit(1)
+        .send().await?;
+
+        let items = response.items.ok_or_else(|| MyError::new("No items found in response"))?;
+        let item = items.first().ok_or_else(|| MyError::new("No items found in response"))?;
+    
+        let content: String = item
+            .get("post")
+            .ok_or_else(|| MyError::new("Missing 'post' attribute"))?
+            .as_ss()
+            .or_else(|_| Err(MyError::new("Error getting S attribute")))?
+            .join("");
+
+        let uuid: String = item
+            .get("uuid")
+            .ok_or_else(|| MyError::new("Missing 'uuid' attribute"))?
+            .as_ss()
+            .or_else(|_| Err(MyError::new("Error getting S attribute")))?
+            .join("");
+    
+    Ok(Post {
+        uuid: uuid,
+        post: content
+    })
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let func = handler_fn(handler);
+    lambda_runtime::run(func).await?;
+
+    Ok(())
+}
+
+async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
+    // 1. Create DB client
+    let opt = Opt {
+        region: Some("us-east-1".to_string()),
+        verbose: true,
+    };
+    let config = match make_config(opt).await {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(format!("Error making config: {}", e.to_string()));
+            
+        },
+    };
+    let db_client = DbClient::new(&config);
+    let table_name = match get_table_name().await {
+        Some(t) => t,
+        None => {
+            return Ok("TABLE_NAME not set".to_string());
+        }
+    };
+    // 2. Get a new post from DB
+    let post = match get_new_post_from_db(&db_client, &table_name).await {
+        Ok(p) => p,
+        Err(e) => return Ok(format!("Failed: {:?}", e)),
+    };
+
+    // 3. Send to SNS
+    let sns_arn = match get_sns_arn().await {
+        Some(t) => t,
+        None => {
+            return Ok(format!("No SNS_ARN provided."));
+        }
+    };
+
+    let sns_client = SnsClient::new(&config);
+    match sns_client.publish()
+        .topic_arn(sns_arn)
+        .message(post.post)
+        .send().await {
+            Ok(output) => println!("Successfully send! {:?}", output),
+            Err(e) => return Ok(format!("Failed :/ {:?}", e)),
+        };
+
+    // 4. Delete post from DB
+    match delete_post_from_db(&db_client, &table_name, post.uuid).await {
+        Ok(s) => return Ok(format!("Success!")),
+        Err(e) => return Ok(format!("Failed :/ {:?}", e)),
+    };
 }

@@ -129,7 +129,8 @@ pub async fn add_to_db(client: &DbClient, posts: Posts, table: String) -> Result
 
     // Execute batch write requests
     for request_items in batch_write_requests {
-        let request = client.batch_write_item().request_items(table.clone(), request_items);
+        let request = client.batch_write_item().request_items(table.clone(), request_items).send().await;
+        println!("Response: {:?}", request);
     }
 
     Ok(String::from("Posts added successfully"))
@@ -195,6 +196,7 @@ mod tests {
             verbose: true,
         };
         let config = aw!(make_config(opt)).unwrap();
+        println!("{:?}", config);
         let db_client = DbClient::new(&config);
         let table_name = String::from("Posts");
         aw!(add_to_db(&db_client, posts, table_name));
