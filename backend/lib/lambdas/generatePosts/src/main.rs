@@ -169,6 +169,7 @@ async fn generate_posts(contents: String) -> Result<Posts, FailureResponse> {
     // otherwise send the full contents
     let bpe = cl100k_base().unwrap();
     let tokens = bpe.encode_with_special_tokens(&contents);
+    println!("Tokens: {:?}", tokens.len());
     if tokens.len() > MAX_TOKENS {
         let chunks = (tokens.len() + MAX_TOKENS - 1) / MAX_TOKENS;
         let chunk_size = (contents.len() + chunks - 1) / chunks;
@@ -300,11 +301,14 @@ async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String,
     // 1. First retrieve the current contents of our newsletters
     let url = "https://davidjmeyer.substack.com/feed";
     let contents = get_current_newsletter_content(url).await;
-
-    match contents {
+    let clean_content = match contents {
+        Ok(c) => cleanup(c.body).await,
+        Err(e) => return Ok(format!("Failed getting content: {:?}", e.to_string())),
+    };
+    match clean_content {
         Ok(c) => {
             // Generate content
-            match generate_posts(c.body).await {
+            match generate_posts(c).await {
                 Ok(p) => add_to_db(p).await,
                 Err(e) => return Ok(format!("Failed: {:?}", e.to_string())),
             };
@@ -312,7 +316,7 @@ async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String,
         Err(e) => {
             return Ok(format!("Failed: {:?}", e.to_string()));
         }
-    }
+    };
     Ok("Success!".to_string())
 }
 

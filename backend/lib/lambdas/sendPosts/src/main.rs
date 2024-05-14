@@ -146,28 +146,29 @@ async fn delete_post_from_db(client: &DbClient, table_name: &str, uuid: String) 
 }
 
 async fn get_new_post_from_db(client: &DbClient, table_name: &str) -> Result<Post, Error> {
-    let response = client.query()
+    let response = client.scan()
         .table_name(table_name)
         .limit(1)
         .send().await?;
 
-        let items = response.items.ok_or_else(|| MyError::new("No items found in response"))?;
-        let item = items.first().ok_or_else(|| MyError::new("No items found in response"))?;
-    
-        let content: String = item
-            .get("post")
-            .ok_or_else(|| MyError::new("Missing 'post' attribute"))?
-            .as_ss()
-            .or_else(|_| Err(MyError::new("Error getting S attribute")))?
-            .join("");
+    println!("DynamoDB Response: {:?}", response);
+    let items = response.items.ok_or_else(|| MyError::new("No items found in response"))?;
+    let item = items.first().ok_or_else(|| MyError::new("No items found in response"))?;
 
-        let uuid: String = item
-            .get("uuid")
-            .ok_or_else(|| MyError::new("Missing 'uuid' attribute"))?
-            .as_ss()
-            .or_else(|_| Err(MyError::new("Error getting S attribute")))?
-            .join("");
-    
+    let content: String = item
+        .get("post")
+        .ok_or_else(|| MyError::new("Missing 'post' attribute"))?
+        .as_s()
+        .or_else(|_| Err(MyError::new("Error getting post S attribute")))?
+        .to_string();
+
+    let uuid: String = item
+        .get("uuid")
+        .ok_or_else(|| MyError::new("Missing 'uuid' attribute"))?
+        .as_s()
+        .or_else(|_| Err(MyError::new("Error getting uuid S attribute")))?
+        .to_string();
+
     Ok(Post {
         uuid: uuid,
         post: content
@@ -182,7 +183,7 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
+async fn worker() -> Result<String, Error> {
     // 1. Create DB client
     let opt = Opt {
         region: Some("us-east-1".to_string()),
@@ -208,6 +209,8 @@ async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String,
         Err(e) => return Ok(format!("Failed: {:?}", e)),
     };
 
+    println!("Post: {:?}", post);
+
     // 3. Send to SNS
     let sns_arn = match get_sns_arn().await {
         Some(t) => t,
@@ -224,10 +227,33 @@ async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String,
             Ok(output) => println!("Successfully send! {:?}", output),
             Err(e) => return Ok(format!("Failed :/ {:?}", e)),
         };
+    println!("Published!");
 
     // 4. Delete post from DB
     match delete_post_from_db(&db_client, &table_name, post.uuid).await {
         Ok(s) => return Ok(format!("Success!")),
         Err(e) => return Ok(format!("Failed :/ {:?}", e)),
     };
+}
+
+async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
+    Ok(worker().await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
+
+    #[test]
+    fn test_send_posts() {
+        dotenv::from_filename("../../.env").ok();
+        let resp = aw!(worker());
+        println!("Response: {:?}", resp);
+    }
 }
