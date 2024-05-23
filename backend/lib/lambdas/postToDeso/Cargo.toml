@@ -13,6 +13,7 @@ tokio = {version = "1", features = ["full"]}
 openssl = { version = "0.10", features = ["vendored"] }
 tokio-test = "0.4.2"
 lambda_http = "0.8.1"
+deso-sdk = "0.1.0"
 
 [[bin]]
 name = "bootstrap"
