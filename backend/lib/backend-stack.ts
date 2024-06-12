@@ -111,6 +111,10 @@ export class AutoPosterStack extends Stack {
     const add = api.root.addResource('add');
     add.addMethod('POST', addPostAPI);
 
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['execute-api:Invoke'],
+      resources: [api.arnForExecuteApi()],  // Restrict to your API Gateway resource
+    }));
     // Event triggered Lambdas: generatePosts and sendPosts
     const generatePosts = new Function(this, 'generatePosts', {
       description: "Generates new posts and calls addPost API",
