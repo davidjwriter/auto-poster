@@ -43,7 +43,7 @@ async fn worker(body: &str) -> Result<String, Error> {
     let deso_account = deso_sdk::DesoAccountBuilder::new()
         .public_key(get_deso_user().await.unwrap())
         .seed_hex_key(get_deso_private_key().await.unwrap())
-        .node(Node::TEST)
+        .node(Node::MAIN)
         .build()
         .unwrap();
 
