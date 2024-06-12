@@ -71,8 +71,7 @@ async fn worker(body: &str) -> Result<String, Error> {
     let access_token = get_access_token().await.expect("Missing Access Token");
     let access_secret = get_access_secret().await.expect("Missing Access Secret");
 
-    let mut params = HashMap::new();
-    params.insert("text", body.as_str());
+    let params = HashMap::new();
     
     let credentials = Credentials::new(
         &consumer_key,

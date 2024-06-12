@@ -20,10 +20,12 @@ export class AutoPosterStack extends Stack {
   constructor(app: App, id: string) {
     super(app, id);
     const openAiApiKey = process.env.OPEN_AI_API_KEY || 'NO_API_KEY';
-    const twitterKey = process.env.TWITTER_API_KEY || 'NO Twitter API Key';
-    const twitterSecret = process.env.TWITTER_API_SECRET || 'No Twitter Secret';
     const desoUser = process.env.DESO_USER || "No Deso User";
     const desoPrivateKey = process.env.DESO_PRIVATE_KEY || "No Deso Private Key";
+    const consumerKey = process.env.CONSUMER_KEY || 'NO Twitter Consumer Key';
+    const consumerSecret = process.env.CONSUMER_SECRET || 'NO Twitter Consumer Secret';
+    const accessToken = process.env.ACCESS_TOKEN || 'NO Twitter Access Key';
+    const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET || 'NO Twitter Access Key Secret';
 
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Posts', {
@@ -141,8 +143,10 @@ export class AutoPosterStack extends Stack {
       environment: {
         RUST_BACKTRACE: '1',
         SNS_ARN: postTopic.topicArn,
-        TWITTER_API_KEY: twitterKey,
-        TWITTER_SECRET: twitterSecret
+        CONSUMER_KEY: consumerKey,
+        CONSUMER_SECRET: consumerSecret,
+        ACCESS_TOKEN: accessToken,
+        ACCESS_TOKEN_SECRET: accessTokenSecret
       },
       logRetention: RetentionDays.ONE_WEEK,
       role: lambdaRole
