@@ -273,6 +273,7 @@ async fn generate_uuid() -> String {
  */
 pub async fn add_to_db(posts: Posts) -> Result<String, Error> {
     let uri = get_add_to_db_url_api().await.unwrap();
+    println!("Add to DB API: {}", uri);
     let client = reqwest::Client::new();
     let response = client
         .post(uri)
@@ -310,7 +311,10 @@ async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String,
         Ok(c) => {
             // Generate content
             match generate_posts(c).await {
-                Ok(p) => add_to_db(p).await,
+                Ok(p) => match add_to_db(p).await {
+                    Ok(s) => println!("Response Success: {:?}", s),
+                    Err(e) => return Ok(format!("Failed: {:?}", e.to_string()))
+                },
                 Err(e) => return Ok(format!("Failed: {:?}", e.to_string())),
             };
         },
