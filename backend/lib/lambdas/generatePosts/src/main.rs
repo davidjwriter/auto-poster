@@ -34,7 +34,8 @@ use tiktoken_rs::cl100k_base;
 
 const PROMPT: &str = "Create 12 powerful short Tweets that 
 inspire conversation from this article. Respond with the 
-Tweets in JSON format like this: {posts: [post: <str>]}";
+Tweets in JSON format like this: {\"posts\": [\"post\": <str>]}
+but make sure it is proper JSON syntax.";
 
 const MAX_TOKENS: usize = 7500;
 
