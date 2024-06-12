@@ -1,10 +1,37 @@
 use serde::Deserialize;
 use serde::Serialize;
-use lambda_http::{service_fn, Response, Body, Error, Request};
+use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use aws_lambda_events::event::sns::SnsEvent;
 use serde_json::json;
 use std::env;
+use reqwest;
+use oauth1::Token;
+use std::collections::HashMap;
+use dotenv::dotenv;
+use oauth1_header::{Credentials};
+use oauth1_header::http::Method;
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Post {
+    pub post: String,
+}
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Tweet {
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TweetData {
+    pub edit_history_tweet_ids: Vec<String>,
+    pub id: String,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TweetResponse {
+    pub data: TweetData,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -14,12 +41,64 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_twitter_api_key() -> Option<String> {
-    env::var("TWITTER_API_KEY").ok()
+async fn get_consumer_key() -> Option<String> {
+    env::var("CONSUMER_KEY").ok()
 }
 
-async fn get_twitter_secret() -> Option<String> {
-    env::var("TWITTER_SECRET").ok()
+async fn get_consumer_secret() -> Option<String> {
+    env::var("CONSUMER_SECRET").ok()
+}
+
+async fn get_access_token() -> Option<String> {
+    env::var("ACCESS_TOKEN").ok()
+}
+
+async fn get_access_secret() -> Option<String> {
+    env::var("ACCESS_TOKEN_SECRET").ok()
+}
+
+async fn worker(body: &str) -> Result<String, Error> {
+    dotenv().ok();
+    let post: Post = serde_json::from_str(&body).expect("Couldn't parse json post");
+
+    let body = post.post;
+    println!("Body: {:?}", body);
+    let comment = String::from("If you like this kind of content, make sure to checkout my newsletter and remember, run with joy! https://davidjmeyer.substack.com");
+
+    let uri = "https://api.twitter.com/2/tweets";
+    let consumer_key = get_consumer_key().await.expect("Missing Consumer Key");
+    let consumer_secret = get_consumer_secret().await.expect("Missing Consumer Secret");
+    let access_token = get_access_token().await.expect("Missing Access Token");
+    let access_secret = get_access_secret().await.expect("Missing Access Secret");
+
+    let mut params = HashMap::new();
+    params.insert("text", body.as_str());
+    
+    let credentials = Credentials::new(
+        &consumer_key,
+        &consumer_secret,
+        &access_token,
+        &access_secret,
+    );
+    let header_value = credentials.auth(&Method::POST, uri, &params);
+    let client = reqwest::Client::new();
+
+    // Construct JSON body
+    let json_body = json!({
+        "text": body,
+    });
+
+    // Make the POST request with the authorization header
+    let response = client.post(uri)
+        .header("Authorization", header_value)
+        .header("Content-Type", "application/json")
+        .json(&json_body)
+        .send().await;
+
+    println!("Response: {:?}", response);
+
+    Ok(String::from("Success"))
+
 }
 
 async fn handler(event: LambdaEvent<SnsEvent>) -> Result<String, Error> {
