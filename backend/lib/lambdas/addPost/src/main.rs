@@ -163,6 +163,7 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
     };
     let body = request.body();
     let posts: Posts = serde_json::from_slice(&body)?;
+    println!("Posts: {:?}", posts);
     add_to_db(&db_client, posts, table_name);
     Ok(Response::builder()
         .status(200)
