@@ -32,6 +32,7 @@ use reqwest;
 use tiktoken_rs::cl100k_base;
 
 
+
 const PROMPT: &str = "Create 12 powerful short Tweets that 
 inspire conversation from this article. Respond with the 
 Tweets in JSON format like this: {\"posts\": [\"post\": <str>]}
@@ -272,7 +273,7 @@ async fn generate_uuid() -> String {
  * Calls our add to db API
  */
 pub async fn add_to_db(posts: Posts) -> Result<String, Error> {
-    let uri = get_add_to_db_url_api().await.unwrap();
+    let uri = format!("{}/add", get_add_to_db_url_api().await.unwrap());
     println!("Add to DB API: {}", uri);
     let client = reqwest::Client::new();
     let response = client
