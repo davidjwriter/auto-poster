@@ -126,11 +126,15 @@ pub async fn add_to_db(client: &DbClient, posts: Posts, table: String) -> Result
     for chunk in write_requests.chunks(25) {
         batch_write_requests.push(chunk.to_vec());
     }
-
+    println!("Total Requests: {}", batch_write_requests.len());
     // Execute batch write requests
     for request_items in batch_write_requests {
+        println!("Request: {:?}", request_items);
         let request = client.batch_write_item().request_items(table.clone(), request_items).send().await;
-        println!("Response: {:?}", request);
+        match request {
+            Ok(s) => println!("Success! {:?}", s),
+            Err(e) => println!("Failed :/ {:?}", e)
+        };
     }
 
     Ok(String::from("Posts added successfully"))
