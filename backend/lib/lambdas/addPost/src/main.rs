@@ -168,7 +168,10 @@ async fn handler(request: Request) -> Result<Response<String>, Error> {
     let body = request.body();
     let posts: Posts = serde_json::from_slice(&body)?;
     println!("Posts: {:?}", posts);
-    add_to_db(&db_client, posts, table_name);
+    match add_to_db(&db_client, posts, table_name).await {
+        Ok(s) => println!("Success: {:?}", s),
+        Err(e) => println!("Failed {:?}", e)
+    };
     Ok(Response::builder()
         .status(200)
         .header("Access-Control-Allow-Origin", "*")
