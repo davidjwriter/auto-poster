@@ -59,7 +59,6 @@ async fn get_access_secret() -> Option<String> {
 }
 
 async fn worker(body: &str) -> Result<String, Error> {
-    dotenv().ok();
     let post: Post = serde_json::from_str(&body).expect("Couldn't parse json post");
 
     let body = post.post;
@@ -158,6 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler() {
+        dotenv().ok();
         let message = r#"{"post":"Balance is key in training. Cardio and strength balance not only refines your power but assures better flexibility and prevents injuries. #TrainingBalance #WorkoutTips"}"#;
         let event = mock_sns_event(message);
         let lambda_event = LambdaEvent {
