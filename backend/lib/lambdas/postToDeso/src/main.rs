@@ -10,6 +10,7 @@ use dotenv::dotenv;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Post {
+    pub uuid: String,
     pub post: String,
 }
 
