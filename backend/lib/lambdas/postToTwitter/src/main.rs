@@ -70,7 +70,7 @@ async fn worker(body: &str) -> Result<String, Error> {
     let consumer_secret = get_consumer_secret().await.expect("Missing Consumer Secret");
     let access_token = get_access_token().await.expect("Missing Access Token");
     let access_secret = get_access_secret().await.expect("Missing Access Secret");
-
+    println!("Consumer Key and Secret: {}\n{}\nAccess token and secret: {}\n{}", consumer_key, consumer_secret, access_token, access_secret);
     let params = HashMap::new();
     
     let credentials = Credentials::new(
@@ -157,7 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler() {
-        let message = r#"{"post":"This is a test post"}"#;
+        let message = r#"{"post":"Balance is key in training. Cardio and strength balance not only refines your power but assures better flexibility and prevents injuries. #TrainingBalance #WorkoutTips"}"#;
         let event = mock_sns_event(message);
         let lambda_event = LambdaEvent {
             payload: event,
