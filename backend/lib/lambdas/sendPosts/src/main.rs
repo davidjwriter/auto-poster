@@ -111,7 +111,7 @@ pub async fn make_config(opt: Opt) -> Result<SdkConfig, Error> {
     if opt.verbose {
         println!("DynamoDB client version: {}", PKG_VERSION);
         println!(
-            "Region:                  {}",
+            "Region: {}",
             region_provider.region().await.unwrap().as_ref()
         );
         println!();
@@ -146,6 +146,8 @@ async fn delete_post_from_db(client: &DbClient, table_name: &str, uuid: String) 
 }
 
 async fn get_new_post_from_db(client: &DbClient, table_name: &str) -> Result<Post, Error> {
+    println!("Checking Table: {}", table_name);
+    println!("DB Client: {:?}", client);
     let response = client.scan()
         .table_name(table_name)
         .limit(1)
@@ -252,7 +254,10 @@ mod tests {
 
     #[test]
     fn test_send_posts() {
-        dotenv::from_filename("../../.env").ok();
+        dotenv::from_filename("../.env").ok();
+        for var in dotenv::vars() {
+            println!("{:?}", var);
+        }
         let resp = aw!(worker());
         println!("Response: {:?}", resp);
     }
