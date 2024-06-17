@@ -5,7 +5,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 use std::env;
-use aws_lambda_events::event::sns::SnsEvent;
 use aws_lambda_events::event::sqs::SqsEvent;
 use dotenv::dotenv;
 

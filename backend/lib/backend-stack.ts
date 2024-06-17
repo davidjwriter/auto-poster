@@ -63,6 +63,12 @@ export class AutoPosterStack extends Stack {
       queueName: 'DesoQueue.fifo',
     });
 
+    const xQueue = new sqs.Queue(this, 'XQueue', {
+      fifo: true,
+      contentBasedDeduplication: true,
+      queueName: 'XQueue.fifo'
+    });
+
     const postTopic = new sns.Topic(this, 'NewPostTopic', {
       topicName: 'NewPostTopic.fifo',
       fifo: true,
@@ -188,9 +194,11 @@ export class AutoPosterStack extends Stack {
     // Add lambda event source as the queue and add each queue as a subscriber
     // This will prevent any duplicate messages being passed
     desoQueue.grantConsumeMessages(postToDeso);
+    xQueue.grantConsumeMessages(postToTwitter);
     postToDeso.addEventSource(new aws_lambda_event_sources.SqsEventSource(desoQueue));
+    postToTwitter.addEventSource(new aws_lambda_event_sources.SqsEventSource(xQueue));
     postTopic.addSubscription(new aws_sns_subscriptions.SqsSubscription(desoQueue));
-    postTopic.addSubscription(new LambdaSubscription(postToTwitter));
+    postTopic.addSubscription(new aws_sns_subscriptions.SqsSubscription(xQueue));
   }
 }
 

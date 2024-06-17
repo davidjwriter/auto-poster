@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
-use aws_lambda_events::event::sns::SnsEvent;
+use aws_lambda_events::event::sqs::SqsEvent;
 use serde_json::json;
 use std::env;
 use reqwest;
@@ -103,7 +103,7 @@ async fn worker(body: &str) -> Result<String, Error> {
 
 }
 
-async fn handler(event: LambdaEvent<SnsEvent>) -> Result<String, Error> {
+async fn handler(event: LambdaEvent<SqsEvent>) -> Result<String, Error> {
     // 1. Get SNS event records
     let records = event.payload.records;
 
@@ -111,7 +111,7 @@ async fn handler(event: LambdaEvent<SnsEvent>) -> Result<String, Error> {
     let mut messages = Vec::new();
 
     for record in records {
-        let message = match worker(&record.sns.message).await {
+        let message = match worker(&record.body.unwrap()).await {
             Ok(s) => s,
             Err(e) => {
                 println!("{:?}", e);
@@ -127,42 +127,42 @@ async fn handler(event: LambdaEvent<SnsEvent>) -> Result<String, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_lambda_events::event::sns::{SnsEvent, SnsMessage, SnsRecord};
+    use aws_lambda_events::event::sqs::{SqsEvent, SqsMessage};
     use lambda_runtime::LambdaEvent;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, hash::Hash};
     use chrono::{DateTime, Utc};
-
-    fn mock_sns_event(message: &str) -> SnsEvent {
-        SnsEvent {
-            records: vec![SnsRecord {
-                event_version: "1.0".to_string(),
-                event_subscription_arn: "arn:aws:sns:EXAMPLE".to_string(),
-                event_source: "aws:sns".to_string(),
-                sns: SnsMessage {
-                    signature_version: "1".to_string(),
-                    timestamp: DateTime::<Utc>::from_utc(
-                        chrono::NaiveDateTime::from_timestamp(1_632_223_843, 0),
-                        Utc,
-                    ),
-                    signature: "EXAMPLE".to_string(),
-                    signing_cert_url: "EXAMPLE".to_string(),
-                    message_id: "EXAMPLE".to_string(),
-                    message: message.to_string(),
-                    message_attributes: HashMap::new(),
-                    sns_message_type: "Notification".to_string(),
-                    unsubscribe_url: "EXAMPLE".to_string(),
-                    topic_arn: "arn:aws:sns:EXAMPLE".to_string(),
-                    subject: None,
-                },
-            }],
+    // - message_id
+    // - receipt_handle
+    // - body
+    // - md5_of_body
+    // - md5_of_message_attributes
+    // - attributes
+    // - message_attributes
+    // - event_source_arn
+    // - event_source
+    // - aws_region
+    fn mock_sqs_event(message: &str) -> SqsEvent {
+        SqsEvent {
+            records: vec![SqsMessage {
+                message_id: Some("EXAMPLE".to_string()),
+                receipt_handle: Some("Receipt".to_string()),
+                body: Some(message.to_string()),
+                md5_of_body: None,
+                md5_of_message_attributes: None,
+                attributes: HashMap::new(),
+                message_attributes: HashMap::new(),
+                event_source_arn: None,
+                event_source: None,
+                aws_region: None
+            }
+            ]
         }
     }
 
     #[tokio::test]
     async fn test_handler() {
-        dotenv().ok();
-        let message = r#"{"post":"Zone 4-5 training helps up your VO2 max, leading to high-performance endurance. Not just for athletes - it also lowers risk of heart diseases and more. #Zone45Training", "uuid": "hello"}"#;
-        let event = mock_sns_event(message);
+        let message = r#"{"post":"This is a test post", "uuid": "hello"}"#;
+        let event = mock_sqs_event(message);
         let lambda_event = LambdaEvent {
             payload: event,
             context: lambda_runtime::Context::default(),
