@@ -61,12 +61,14 @@ export class AutoPosterStack extends Stack {
       fifo: true,
       contentBasedDeduplication: true,
       queueName: 'DesoQueue.fifo',
+      visibilityTimeout: Duration.seconds(300),
     });
 
     const xQueue = new sqs.Queue(this, 'XQueue', {
       fifo: true,
       contentBasedDeduplication: true,
-      queueName: 'XQueue.fifo'
+      queueName: 'XQueue.fifo',
+      visibilityTimeout: Duration.seconds(300)
     });
 
     const postTopic = new sns.Topic(this, 'NewPostTopic', {
