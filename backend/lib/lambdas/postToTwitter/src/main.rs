@@ -34,6 +34,28 @@ pub struct TweetResponse {
     pub data: TweetData,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TweetComment {
+    pub text: String,
+    pub reply: Reply
+}
+
+impl TweetComment {
+    pub fn new(comment: String, id: String) -> TweetComment {
+        TweetComment {
+            text: comment,
+            reply: Reply {
+                in_reply_to_tweet_id: id
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Reply {
+    pub in_reply_to_tweet_id: String
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let func = service_fn(handler);
@@ -63,10 +85,6 @@ async fn worker(body: &str) -> Result<String, Error> {
 
     let body = post.post;
     println!("Body: {:?}", body);
-    for (key, value) in env::vars() {
-        println!("{}: {}", key, value);
-    } 
-    let comment = String::from("If you like this kind of content, make sure to checkout my newsletter and remember, run with joy! https://davidjmeyer.substack.com");
 
     let uri = "https://api.twitter.com/2/tweets";
     let consumer_key = get_consumer_key().await.expect("Missing Consumer Key");
@@ -92,12 +110,28 @@ async fn worker(body: &str) -> Result<String, Error> {
 
     // Make the POST request with the authorization header
     let response = client.post(uri)
-        .header("Authorization", header_value)
+        .header("Authorization", &header_value)
         .header("Content-Type", "application/json")
         .json(&json_body)
         .send().await;
 
-    println!("Response: {:?}", response);
+    // Make the comment
+    let comment = String::from("If you like this kind of content, make sure to checkout my newsletter and remember, run with joy! https://davidjmeyer.substack.com");
+
+    let raw_resp = response.unwrap().text().await.unwrap();
+    let tweet_data: TweetResponse = serde_json::from_str(&raw_resp).expect("Error getting tweet data");
+    println!("Tweet Data: {:?}", tweet_data);
+
+    let comment_body = TweetComment::new(comment, tweet_data.data.id);
+
+    let response = client.post(uri)
+        .header("Authorization", &header_value)
+        .header("Content-Type", "application/json")
+        .json(&comment_body)
+        .send().await;
+
+    let raw_resp = response.unwrap().text().await.unwrap();
+    println!("{}", raw_resp);
 
     Ok(String::from("Success"))
 
@@ -161,7 +195,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler() {
-        let message = r#"{"post":"This is a test post", "uuid": "hello"}"#;
+        dotenv().ok();
+        let message = r#"{"post":"Thank you Lord for this day, may it be used for your glory! Gm everyone!", "uuid": "hello"}"#;
         let event = mock_sqs_event(message);
         let lambda_event = LambdaEvent {
             payload: event,
