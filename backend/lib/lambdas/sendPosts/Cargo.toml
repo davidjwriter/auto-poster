@@ -15,7 +15,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 futures-util = "0.3.27"
 hyper-native-tls = "0.3.0"
 select = "0.6.0"
-uuid = { version="1.4.0", features=["v4", "fast-rng", "macro-diagnostics"] }
+uuid = { version = "1.4.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 openai-api-rs = "0.1.8"
 scraper = "0.17.1"
 tokio-test = "0.4.2"

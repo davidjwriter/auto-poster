@@ -224,6 +224,7 @@ async fn worker() -> Result<String, Error> {
     let sns_client = SnsClient::new(&config);
     match sns_client.publish()
         .topic_arn(sns_arn)
+        .message_group_id(Uuid::new_v4().to_string())
         .message(serde_json::to_string(&post).unwrap())
         .send().await {
             Ok(output) => println!("Successfully send! {:?}", output),
