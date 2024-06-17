@@ -161,7 +161,7 @@ mod tests {
     #[tokio::test]
     async fn test_handler() {
         dotenv().ok();
-        let message = r#"{"post":"Balance is key in training. Cardio and strength balance not only refines your power but assures better flexibility and prevents injuries. #TrainingBalance #WorkoutTips"}"#;
+        let message = r#"{"post":"Zone 4-5 training helps up your VO2 max, leading to high-performance endurance. Not just for athletes - it also lowers risk of heart diseases and more. #Zone45Training", "uuid": "hello"}"#;
         let event = mock_sns_event(message);
         let lambda_event = LambdaEvent {
             payload: event,

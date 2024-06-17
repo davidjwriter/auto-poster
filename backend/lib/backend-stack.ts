@@ -26,7 +26,8 @@ export class AutoPosterStack extends Stack {
     const consumerSecret = process.env.CONSUMER_SECRET || 'NO Twitter Consumer Secret';
     const accessToken = process.env.ACCESS_TOKEN || 'NO Twitter Access Key';
     const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET || 'NO Twitter Access Key Secret';
-
+    console.log("Deso User " + desoUser);
+    console.log("Accesss Token " + accessToken);
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Posts', {
       partitionKey: {
