@@ -1,6 +1,7 @@
 import { Runtime, Function, Code, CfnLayerVersion } from 'aws-cdk-lib/aws-lambda';
 import * as sns from 'aws-cdk-lib/aws-sns';
-import { App, Stack, RemovalPolicy } from 'aws-cdk-lib';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { App, Stack, RemovalPolicy, aws_sns_subscriptions, aws_lambda_event_sources } from 'aws-cdk-lib';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { RetentionDays } from 'aws-cdk-lib/aws-logs';
@@ -55,6 +56,14 @@ export class AutoPosterStack extends Stack {
     lambdaRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'));
   
     // Create an SNS topic and subscribe the postToTwitter and postToDeso lambdas
+
+    // Create an SQS FIFO Queue
+    const desoQueue = new sqs.Queue(this, 'DesoQueue', {
+      fifo: true,
+      contentBasedDeduplication: true,
+      queueName: 'DesoQueue.fifo',
+    });
+
     const postTopic = new sns.Topic(this, 'NewPostTopic');
 
     // Create an API Gateway resource for each of the CRUD operations
@@ -173,9 +182,12 @@ export class AutoPosterStack extends Stack {
       role: lambdaRole
     });
 
+    // Add lambda event source as the queue and add each queue as a subscriber
+    // This will prevent any duplicate messages being passed
+    desoQueue.grantConsumeMessages(postToDeso);
+    postToDeso.addEventSource(new aws_lambda_event_sources.SqsEventSource(desoQueue));
+    postTopic.addSubscription(new aws_sns_subscriptions.SqsSubscription(desoQueue));
     postTopic.addSubscription(new LambdaSubscription(postToTwitter));
-    postTopic.addSubscription(new LambdaSubscription(postToDeso));
-
   }
 }
 
