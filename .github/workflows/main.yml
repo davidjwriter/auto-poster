@@ -16,8 +16,10 @@ jobs:
           echo "AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           echo "AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}"
           echo "OPEN_AI_API_KEY: ${{ secrets.OPEN_AI_API_KEY }}"
-          echo "TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}"
-          echo "TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}"
+          echo "CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}"
+          echo "CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}"
+          echo "ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}"
+          echo "ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}"
           echo "DESO_USER: ${{ secrets.DESO_USER }}"
           echo "DESO_PRIVATE_KEY: ${{ secrets.DESO_PRIVATE_KEY }}"
 
