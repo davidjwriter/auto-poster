@@ -9,7 +9,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import { IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, RestApi, Cors } from 'aws-cdk-lib/aws-apigateway';
 import { AttributeType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Duration, DockerImage } from 'aws-cdk-lib';
-import path = require('path');
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { LambdaSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
@@ -64,7 +63,11 @@ export class AutoPosterStack extends Stack {
       queueName: 'DesoQueue.fifo',
     });
 
-    const postTopic = new sns.Topic(this, 'NewPostTopic');
+    const postTopic = new sns.Topic(this, 'NewPostTopic', {
+      topicName: 'NewPostTopic.fifo',
+      fifo: true,
+      contentBasedDeduplication: true,
+    });
 
     // Create an API Gateway resource for each of the CRUD operations
     const api = new RestApi(this, 'PostAPI', {
