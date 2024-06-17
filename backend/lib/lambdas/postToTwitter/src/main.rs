@@ -63,6 +63,9 @@ async fn worker(body: &str) -> Result<String, Error> {
 
     let body = post.post;
     println!("Body: {:?}", body);
+    for (key, value) in env::vars() {
+        println!("{}: {}", key, value);
+    } 
     let comment = String::from("If you like this kind of content, make sure to checkout my newsletter and remember, run with joy! https://davidjmeyer.substack.com");
 
     let uri = "https://api.twitter.com/2/tweets";

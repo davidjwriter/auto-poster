@@ -22,10 +22,7 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_deso_user() -> Option<String> {
-    for (key, value) in env::vars() {
-        println!("{}: {}", key, value);
-    }    
+async fn get_deso_user() -> Option<String> {  
     env::var("DESO_USER").ok()
 }
 
@@ -130,7 +127,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler() {
-        let message = r#"{"post":"This is a test post"}"#;
+        let message = r#"{"post":"This is a test post", "uuid": "hello"}"#;
         let event = mock_sns_event(message);
         let lambda_event = LambdaEvent {
             payload: event,
