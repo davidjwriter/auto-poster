@@ -11,6 +11,37 @@ use dotenv::dotenv;
 use oauth1_header::{Credentials};
 use oauth1_header::http::Method;
 
+
+// Raw Body: {
+
+//     Raw Body: {
+//     2024-06-18T00:39:01.087Z	"Type" : "Notification",
+//     2024-06-18T00:39:01.087Z	"MessageId" : "39db8901-24a7-5fdf-b938-d7ebfdc30640",
+//     2024-06-18T00:39:01.087Z	"SequenceNumber" : "10000000000000011000",
+//     2024-06-18T00:39:01.087Z	"TopicArn" : "arn:aws:sns:us-east-1:918532603467:NewPostTopic.fifo",
+//     2024-06-18T00:39:01.087Z	"Message" : "{\"uuid\":\"e08a66ad-fadd-40b0-8d9c-64017b8af13c\",\"post\":\"A hybrid athlete practices a well-rounded regimen, building both endurance of heart, lung, and strength, like a Spartan warrior. #HybridAthlete #FitnessLife\"}",
+//     2024-06-18T00:39:01.087Z	"Timestamp" : "2024-06-18T00:39:00.776Z",
+//     2024-06-18T00:39:01.087Z	"UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:918532603467:NewPostTopic.fifo:9acb1b93-33f8-4cd4-bd8d-7fc931c0416b"
+//     2024-06-18T00:39:01.087Z	}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MessageBody {
+    #[serde(rename = "Type")]
+    pub message_type: String,
+    #[serde(rename = "MessageId")]
+    pub message_id: String,
+    #[serde(rename = "SequenceNumber")]
+    pub sequence_numer: String,
+    #[serde(rename = "TopicArn")]
+    pub topic_arn: String,
+    #[serde(rename = "Message")]
+    pub message: String,
+    #[serde(rename = "Timestamp")]
+    pub timestamp: String,
+    #[serde(rename = "UnsubscribeURL")]
+    pub unsub_url: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Post {
     pub uuid: String,
@@ -82,7 +113,8 @@ async fn get_access_secret() -> Option<String> {
 
 async fn worker(body: &str) -> Result<String, Error> {
     println!("Raw Body: {}", body);
-    let post: Post = serde_json::from_str(&body).expect("Couldn't parse json post");
+    let message_body: MessageBody = serde_json::from_str(&body).expect("Couldn't parse json raw body");
+    let post: Post = serde_json::from_str(&message_body.message).expect("Couldn't parse json post");
 
     let body = post.post;
     println!("Body: {:?}", body);

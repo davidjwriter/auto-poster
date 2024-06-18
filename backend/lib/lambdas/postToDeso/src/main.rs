@@ -9,6 +9,24 @@ use aws_lambda_events::event::sqs::SqsEvent;
 use dotenv::dotenv;
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct MessageBody {
+    #[serde(rename = "Type")]
+    pub message_type: String,
+    #[serde(rename = "MessageId")]
+    pub message_id: String,
+    #[serde(rename = "SequenceNumber")]
+    pub sequence_numer: String,
+    #[serde(rename = "TopicArn")]
+    pub topic_arn: String,
+    #[serde(rename = "Message")]
+    pub message: String,
+    #[serde(rename = "Timestamp")]
+    pub timestamp: String,
+    #[serde(rename = "UnsubscribeURL")]
+    pub unsub_url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Post {
     pub uuid: String,
     pub post: String,
@@ -32,8 +50,9 @@ async fn get_deso_private_key() -> Option<String> {
 
 async fn worker(body: &str) -> Result<String, Error> {
     dotenv().ok();
-    println!("Raw body: {}", body);
-    let post: Post = serde_json::from_str(&body).expect("Couldn't parse json post");
+    println!("Raw Body: {}", body);
+    let message_body: MessageBody = serde_json::from_str(&body).expect("Couldn't parse json raw body");
+    let post: Post = serde_json::from_str(&message_body.message).expect("Couldn't parse json post");
 
     let body = post.post;
     println!("Body: {:?}", body);
