@@ -81,6 +81,7 @@ async fn get_access_secret() -> Option<String> {
 }
 
 async fn worker(body: &str) -> Result<String, Error> {
+    println!("Raw Body: {}", body);
     let post: Post = serde_json::from_str(&body).expect("Couldn't parse json post");
 
     let body = post.post;
