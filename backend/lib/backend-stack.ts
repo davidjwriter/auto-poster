@@ -183,6 +183,7 @@ export class AutoPosterStack extends Stack {
       code: Code.fromAsset('lib/lambdas/postToDeso/target/x86_64-unknown-linux-musl/release/lambda'),
       runtime: Runtime.PROVIDED_AL2,
       handler: 'not.required',
+      timeout: Duration.minutes(5),
       environment: {
         RUST_BACKTRACE: '1',
         SNS_ARN: postTopic.topicArn,
