@@ -62,6 +62,13 @@ export class AutoPosterStack extends Stack {
       contentBasedDeduplication: true,
       queueName: 'DesoQueue.fifo',
       visibilityTimeout: Duration.seconds(300),
+      deadLetterQueue: {
+        maxReceiveCount: 1, // Move to DLQ after 1 failed attempt
+        queue: new sqs.Queue(this, 'DeadLetterQueue', {
+          fifo: true,
+          queueName: 'DeadLetterQueue.fifo',
+        }),
+      },
     });
 
     const xQueue = new sqs.Queue(this, 'XQueue', {
