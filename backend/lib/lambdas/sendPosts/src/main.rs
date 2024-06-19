@@ -93,7 +93,7 @@ pub trait SocialPost {
     fn get_post(self) -> String;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Post {
     pub uuid: String,
     pub post: String
@@ -309,13 +309,16 @@ async fn worker() -> Result<String, Error> {
     };
 
     // 3. Get a new post from DB
-    let mut message = String::new();
+    let mut message: Option<Post> = None;
     let mut uuid_to_delete: Option<String> = None;
     let mut table_to_delete_from = &String::new();
 
     if let Some(s_post) = scheduled_post {
         println!("Sending a Scheduled Post");
-        message = s_post.post;
+        message = Some(Post {
+            uuid: s_post.uuid.clone(),
+            post: s_post.post
+        });
         uuid_to_delete = match s_post.recurring {
             false => Some(s_post.uuid),
             true => None,
@@ -327,7 +330,7 @@ async fn worker() -> Result<String, Error> {
             Err(e) => return Ok(format!("Failed: {:?}", e)),
         };
         println!("Sending a normal post");
-        message = post.post;
+        message = Some(post.clone());
         uuid_to_delete = Some(post.uuid);
         table_to_delete_from = &table_name;
     }
@@ -346,7 +349,7 @@ async fn worker() -> Result<String, Error> {
     match sns_client.publish()
         .topic_arn(sns_arn)
         .message_group_id(Uuid::new_v4().to_string())
-        .message(serde_json::to_string(&message).unwrap())
+        .message(serde_json::to_string(&message.unwrap()).unwrap())
         .send().await {
             Ok(output) => println!("Successfully send! {:?}", output),
             Err(e) => return Ok(format!("Failed :/ {:?}", e)),
