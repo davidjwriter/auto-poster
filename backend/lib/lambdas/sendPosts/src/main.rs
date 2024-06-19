@@ -222,7 +222,10 @@ async fn check_scheduled_posts(client: &DbClient, table_name: &str) -> Result<Op
         .filter(|post| {
             let scheduled_time: DateTime<Local> = match DateTime::from_str(&post.time) {
                 Ok(t) => t,
-                Err(_) => return false
+                Err(e) => {
+                    println!("Error parsing: {} {}", post.time, e.to_string());
+                    return false;
+                }
             };
             println!("Comparing scheduled hour: {} to now: {}", scheduled_time.hour(), now.hour());
             scheduled_time.hour() == now.hour()
