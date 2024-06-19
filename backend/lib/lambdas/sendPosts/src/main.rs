@@ -1,3 +1,4 @@
+use chrono::TimeZone;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -220,7 +221,7 @@ async fn check_scheduled_posts(client: &DbClient, table_name: &str) -> Result<Op
     let now = Local::now();
     let filtered_posts: Vec<ScheduledPost> = posts.into_iter()
         .filter(|post| {
-            let scheduled_time: DateTime<Local> = match DateTime::from_str(&post.time) {
+            let scheduled_time: NaiveTime = match NaiveTime::from_str(&post.time) {
                 Ok(t) => t,
                 Err(e) => {
                     println!("Error parsing: {} {}", post.time, e.to_string());
