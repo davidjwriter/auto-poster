@@ -224,6 +224,7 @@ async fn check_scheduled_posts(client: &DbClient, table_name: &str) -> Result<Op
                 Ok(t) => t,
                 Err(_) => return false
             };
+            println!("Comparing scheduled hour: {} to now: {}", scheduled_time.hour(), now.hour());
             scheduled_time.hour() == now.hour()
         })
         .collect::<Vec<ScheduledPost>>();
