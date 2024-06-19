@@ -26,8 +26,8 @@ export class AutoPosterStack extends Stack {
     const consumerSecret = process.env.CONSUMER_SECRET || 'NO Twitter Consumer Secret';
     const accessToken = process.env.ACCESS_TOKEN || 'NO Twitter Access Key';
     const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET || 'NO Twitter Access Key Secret';
-    console.log("Deso User " + desoUser);
-    console.log("Accesss Token " + accessToken);
+    const scheduledPosts = "ScheduledPosts";
+
     // Setup our dynamo db table
     const dynamoTable = new Table(this, 'Posts', {
       partitionKey: {
@@ -43,6 +43,17 @@ export class AutoPosterStack extends Stack {
        * the new table, and it will remain in your account until manually deleted. By setting the policy to
        * DESTROY, cdk destroy will delete the table (even if it has data in it)
        */
+      removalPolicy: RemovalPolicy.RETAIN, // NOT recommended for production code
+    });
+
+    const scheduledTable = new Table(this, 'ScheduledPosts', {
+      partitionKey: {
+        name: 'uuid',
+        type: AttributeType.STRING
+      },
+      readCapacity: 1,
+      writeCapacity: 1,
+      tableName: scheduledPosts,
       removalPolicy: RemovalPolicy.RETAIN, // NOT recommended for production code
     });
 
@@ -103,6 +114,7 @@ export class AutoPosterStack extends Stack {
       environment: {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Posts',
+        SCHEDULE_TABLE_NAME: scheduledPosts,
         SNS_ARN: postTopic.topicArn
       },
       logRetention: RetentionDays.ONE_WEEK,
@@ -111,6 +123,7 @@ export class AutoPosterStack extends Stack {
 
     postTopic.grantPublish(sendPosts);
     dynamoTable.grantReadWriteData(sendPosts);
+    scheduledTable.grantReadWriteData(sendPosts);
     const postEvent = new Rule(this, 'postEvent', {
       schedule: Schedule.expression('rate(1 hour)'),
     });
@@ -163,13 +176,32 @@ export class AutoPosterStack extends Stack {
 
     dynamoTable.grantWriteData(addPost);
 
+    const addScheduledPost = new Function(this, 'addScheduledPost', {
+      description: "Add new scheduled posts to the DB",
+      code: Code.fromAsset('lib/lambdas/addScheduledPost/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        TABLE_NAME: scheduledPosts
+      },
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
+    });
+
+    scheduledTable.grantWriteData(addScheduledPost);
+
     // Integrate lambda functions with an API gateway
     const addPostAPI = new LambdaIntegration(addPost);
+    const addScheduledPostAPI = new LambdaIntegration(addScheduledPost);
     const getPostsAPI = new LambdaIntegration(getPosts);
     const editPostAPI = new LambdaIntegration(editPost);
 
     const add = api.root.addResource('add');
     add.addMethod('POST', addPostAPI);
+
+    const addSchedule = api.root.addResource('addSchedule');
+    addSchedule.addMethod('POST', addScheduledPostAPI);
 
     const get = api.root.addResource('getPosts');
     get.addMethod('GET', getPostsAPI);
