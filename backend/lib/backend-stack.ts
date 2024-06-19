@@ -116,6 +116,36 @@ export class AutoPosterStack extends Stack {
     });
     postEvent.addTarget(new LambdaFunction(sendPosts));
 
+    // Get Posts
+    const getPosts = new Function(this, 'getPosts', {
+      description: "Get all posts in DB",
+      code: Code.fromAsset('lib/lambdas/getPosts/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        TABLE_NAME: 'Posts',
+      },
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
+    });
+    dynamoTable.grantReadWriteData(getPosts);
+
+    // Edit Posts
+    const editPost = new Function(this, 'editPost', {
+      description: "Edit posts to the DB",
+      code: Code.fromAsset('lib/lambdas/editPost/target/x86_64-unknown-linux-musl/release/lambda'),
+      runtime: Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        TABLE_NAME: 'Posts'
+      },
+      logRetention: RetentionDays.ONE_WEEK,
+      role: lambdaRole
+    });
+    dynamoTable.grantWriteData(editPost);
+
     // 1 Lambda function API
     const addPost = new Function(this, 'addPost', {
       description: "Add new posts to the DB",
@@ -135,9 +165,17 @@ export class AutoPosterStack extends Stack {
 
     // Integrate lambda functions with an API gateway
     const addPostAPI = new LambdaIntegration(addPost);
+    const getPostsAPI = new LambdaIntegration(getPosts);
+    const editPostAPI = new LambdaIntegration(editPost);
 
     const add = api.root.addResource('add');
     add.addMethod('POST', addPostAPI);
+
+    const get = api.root.addResource('getPosts');
+    get.addMethod('GET', getPostsAPI);
+
+    const edit = api.root.addResource('editPosts');
+    edit.addMethod('POST', editPostAPI);
 
     lambdaRole.addToPolicy(new iam.PolicyStatement({
       actions: ['execute-api:Invoke'],
@@ -162,6 +200,11 @@ export class AutoPosterStack extends Stack {
       schedule: Schedule.rate(Duration.days(7)),
     });
     generateEvent.addTarget(new LambdaFunction(generatePosts));
+
+    // Add api endpoint for generation
+    const generateAPI = new LambdaIntegration(generatePosts);
+    const generate = api.root.addResource('generate');
+    generate.addMethod('POST', generateAPI);
 
     // 2 Lambda function subscribers
 
