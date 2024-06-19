@@ -104,6 +104,14 @@ export class AutoPosterStack extends Stack {
         allowHeaders: Cors.DEFAULT_HEADERS,
       }
     });
+    const generateAPI = new RestApi(this, 'GenerateAPI', {
+      restApiName: 'Generate API',
+      defaultCorsPreflightOptions: {
+        allowOrigins: Cors.ALL_ORIGINS,
+        allowMethods: Cors.ALL_METHODS,
+        allowHeaders: Cors.DEFAULT_HEADERS,
+      }
+    });
 
     const sendPosts = new Function(this, 'sendPosts', {
       description: "Takes a post to send to SNS topic from DB",
@@ -114,7 +122,7 @@ export class AutoPosterStack extends Stack {
       environment: {
         RUST_BACKTRACE: '1',
         TABLE_NAME: 'Posts',
-        SCHEDULE_TABLE_NAME: scheduledPosts,
+        SCHEDULED_TABLE_NAME: scheduledPosts,
         SNS_ARN: postTopic.topicArn
       },
       logRetention: RetentionDays.ONE_WEEK,
@@ -234,9 +242,9 @@ export class AutoPosterStack extends Stack {
     generateEvent.addTarget(new LambdaFunction(generatePosts));
 
     // Add api endpoint for generation
-    const generateAPI = new LambdaIntegration(generatePosts);
-    const generate = api.root.addResource('generate');
-    generate.addMethod('POST', generateAPI);
+    const generateAPIIntegration = new LambdaIntegration(generatePosts);
+    const generate = generateAPI.root.addResource('generate');
+    generate.addMethod('POST', generateAPIIntegration);
 
     // 2 Lambda function subscribers
 

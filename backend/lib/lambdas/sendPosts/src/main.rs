@@ -36,6 +36,8 @@ use aws_sdk_dynamodb::operation::get_item::GetItemInput;
 use lambda_runtime::{LambdaEvent};
 use std::fmt;
 use std::error::Error as StdError;
+use chrono::{Local, NaiveTime, DateTime, Timelike};
+
 
 
 #[derive(Debug)]
@@ -86,15 +88,39 @@ pub enum ContentType {
     THREAD
 }
 
+pub trait SocialPost {
+    fn get_post(self) -> String;
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Post {
     pub uuid: String,
     pub post: String
 }
 
+impl SocialPost for Post {
+    fn get_post(self) -> String {
+        return self.post;
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Posts {
     pub posts: Vec<Post>
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ScheduledPost {
+    pub uuid: String,
+    pub post: String,
+    pub time: String,
+    pub recurring: bool,
+}
+
+impl SocialPost for ScheduledPost {
+    fn get_post(self) -> String {
+        return self.post;
+    }
 }
 
 // Implement Display for the Failure response so that we can then implement Error.
@@ -130,6 +156,10 @@ async fn get_table_name() -> Option<String> {
     env::var("TABLE_NAME").ok()
 }
 
+async fn get_scheduled_table_name() -> Option<String> {
+    env::var("SCHEDULED_TABLE_NAME").ok()
+}
+
 async fn get_sns_arn() -> Option<String> {
     env::var("SNS_ARN").ok()
 }
@@ -145,9 +175,63 @@ async fn delete_post_from_db(client: &DbClient, table_name: &str, uuid: String) 
     Ok(())
 }
 
+async fn check_scheduled_posts(client: &DbClient, table_name: &str) -> Result<Option<ScheduledPost>, Error> {
+    let response = match client.scan()
+        .table_name(table_name)
+        .send().await {
+            Ok(r) => r,
+            Err(_) => return Ok(None)
+        };
+
+    let items = response.items.ok_or_else(|| MyError::new("No items found in response"))?;
+    let mut posts: Vec<ScheduledPost> = Vec::new();
+
+    for item in items {
+        let post: String = item
+            .get("post")
+            .ok_or_else(|| MyError::new("Missing 'post' attribute"))?
+            .as_s()
+            .or_else(|_| Err(MyError::new("Error getting post S attribute")))?
+            .to_string();
+
+        let uuid: String = item
+            .get("uuid")
+            .ok_or_else(|| MyError::new("Missing 'uuid' attribute"))?
+            .as_s()
+            .or_else(|_| Err(MyError::new("Error getting uuid S attribute")))?
+            .to_string();
+
+        let time: String = item
+            .get("time")
+            .ok_or_else(|| MyError::new("Missing 'time' attribute"))?
+            .as_s()
+            .or_else(|_| Err(MyError::new("Error getting time S attribute")))?
+            .to_string();
+
+        let recurring: bool = *item
+            .get("recurring")
+            .ok_or_else(|| MyError::new("Missing 'recurring' attribute"))?
+            .as_bool()
+            .or_else(|_| Err(MyError::new("Error getting recurring Bool attribute")))?;
+
+        posts.push(ScheduledPost{post, uuid, time, recurring});
+    }
+    let now = Local::now();
+    let filtered_posts: Vec<ScheduledPost> = posts.into_iter()
+        .filter(|post| {
+            let scheduled_time: DateTime<Local> = match DateTime::from_str(&post.time) {
+                Ok(t) => t,
+                Err(_) => return false
+            };
+            scheduled_time.hour() == now.hour()
+        })
+        .collect::<Vec<ScheduledPost>>();
+    let item = filtered_posts.first().cloned().ok_or_else(|| MyError::new("No Scheduled Posts"))?;
+    
+    Ok(Some(item))
+}
+
 async fn get_new_post_from_db(client: &DbClient, table_name: &str) -> Result<Post, Error> {
-    println!("Checking Table: {}", table_name);
-    println!("DB Client: {:?}", client);
     let response = client.scan()
         .table_name(table_name)
         .limit(1)
@@ -205,15 +289,44 @@ async fn worker() -> Result<String, Error> {
             return Ok("TABLE_NAME not set".to_string());
         }
     };
-    // 2. Get a new post from DB
-    let post = match get_new_post_from_db(&db_client, &table_name).await {
-        Ok(p) => p,
-        Err(e) => return Ok(format!("Failed: {:?}", e)),
+    let scheduled_table_name: String = match get_scheduled_table_name().await {
+        Some(t) => t,
+        None => {
+            return Ok("SCHEDULED_TABLE_NAME not set".to_string());
+        }
     };
 
-    println!("Post: {:?}", post);
+    // 2. Check Scheduled Table First
+    let scheduled_post: Option<ScheduledPost> = match check_scheduled_posts(&db_client, &scheduled_table_name).await {
+        Ok(s) => s,
+        Err(e) => None
+    };
 
-    // 3. Send to SNS
+    // 3. Get a new post from DB
+    let mut message = String::new();
+    let mut uuid_to_delete: Option<String> = None;
+    let mut table_to_delete_from = &String::new();
+
+    if let Some(s_post) = scheduled_post {
+        message = s_post.post;
+        uuid_to_delete = match s_post.recurring {
+            false => Some(s_post.uuid),
+            true => None,
+        };
+        table_to_delete_from = &scheduled_table_name;
+    } else {
+        let post = match get_new_post_from_db(&db_client, &table_name).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Failed: {:?}", e)),
+        };
+        message = post.post;
+        uuid_to_delete = Some(post.uuid);
+        table_to_delete_from = &table_name;
+    }
+
+    println!("Post: {:?}", message);
+
+    // 4. Send to SNS
     let sns_arn = match get_sns_arn().await {
         Some(t) => t,
         None => {
@@ -225,18 +338,22 @@ async fn worker() -> Result<String, Error> {
     match sns_client.publish()
         .topic_arn(sns_arn)
         .message_group_id(Uuid::new_v4().to_string())
-        .message(serde_json::to_string(&post).unwrap())
+        .message(serde_json::to_string(&message).unwrap())
         .send().await {
             Ok(output) => println!("Successfully send! {:?}", output),
             Err(e) => return Ok(format!("Failed :/ {:?}", e)),
         };
     println!("Published!");
 
-    // 4. Delete post from DB
-    match delete_post_from_db(&db_client, &table_name, post.uuid).await {
-        Ok(s) => return Ok(format!("Success!")),
-        Err(e) => return Ok(format!("Failed :/ {:?}", e)),
-    };
+    // 5. Delete post from DB
+    if let Some(uuid) = uuid_to_delete {
+        match delete_post_from_db(&db_client, table_to_delete_from, uuid).await {
+            Ok(s) => return Ok(format!("Success!")),
+            Err(e) => return Ok(format!("Failed :/ {:?}", e)),
+        };
+    } else {
+        Ok(String::from("Success!"))
+    }
 }
 
 async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
