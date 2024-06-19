@@ -55,6 +55,15 @@ jobs:
           cd ../sendPosts
           ./build.sh
 
+          cd ../getPosts
+          ./build.sh
+
+          cd ../addScheduledPost
+          ./build.sh
+
+          cd ../editPost
+          ./build.sh
+
       - name: Install AWS CDK
         run: npm install -g aws-cdk
 
