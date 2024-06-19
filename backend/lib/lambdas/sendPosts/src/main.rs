@@ -216,6 +216,7 @@ async fn check_scheduled_posts(client: &DbClient, table_name: &str) -> Result<Op
 
         posts.push(ScheduledPost{post, uuid, time, recurring});
     }
+    println!("Looking through all scheduled posts: {}", posts.len());
     let now = Local::now();
     let filtered_posts: Vec<ScheduledPost> = posts.into_iter()
         .filter(|post| {
@@ -308,6 +309,7 @@ async fn worker() -> Result<String, Error> {
     let mut table_to_delete_from = &String::new();
 
     if let Some(s_post) = scheduled_post {
+        println!("Sending a Scheduled Post");
         message = s_post.post;
         uuid_to_delete = match s_post.recurring {
             false => Some(s_post.uuid),
@@ -319,6 +321,7 @@ async fn worker() -> Result<String, Error> {
             Ok(p) => p,
             Err(e) => return Ok(format!("Failed: {:?}", e)),
         };
+        println!("Sending a normal post");
         message = post.post;
         uuid_to_delete = Some(post.uuid);
         table_to_delete_from = &table_name;
