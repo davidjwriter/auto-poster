@@ -1,3 +1,4 @@
+use lambda_http::service_fn;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -81,8 +82,8 @@ impl std::error::Error for FailureResponse {}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let func = handler_fn(handler);
-    lambda_runtime::run(func).await?;
+    let func = service_fn(handler);
+    lambda_http::run(func).await?;
 
     Ok(())
 }
@@ -300,13 +301,17 @@ fn extract_json(json_string: &str) -> Option<String> {
 }
 
 
-async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
+async fn handler(_request: Request) -> Result<Response<String>, Error> {
     // 1. First retrieve the current contents of our newsletters
     let url = "https://davidjmeyer.substack.com/feed";
     let contents = get_current_newsletter_content(url).await;
     let clean_content = match contents {
         Ok(c) => cleanup(c.body).await,
-        Err(e) => return Ok(format!("Failed getting content: {:?}", e.to_string())),
+        Err(e) => {
+            return Ok(Response::builder()
+                .status(500)
+                .body(format!("Error making config: {}", e.to_string()))?);
+        }
     };
     match clean_content {
         Ok(c) => {
@@ -314,16 +319,29 @@ async fn handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String,
             match generate_posts(c).await {
                 Ok(p) => match add_to_db(p).await {
                     Ok(s) => println!("Response Success: {:?}", s),
-                    Err(e) => return Ok(format!("Failed: {:?}", e.to_string()))
+                    Err(e) => {
+                        return Ok(Response::builder()
+                            .status(500)
+                            .body(format!("Error making config: {}", e.to_string()))?);
+                    }
                 },
-                Err(e) => return Ok(format!("Failed: {:?}", e.to_string())),
+                Err(e) => {
+                    return Ok(Response::builder()
+                        .status(500)
+                        .body(format!("Error making config: {}", e.to_string()))?);
+                }
             };
         },
         Err(e) => {
-            return Ok(format!("Failed: {:?}", e.to_string()));
+                return Ok(Response::builder()
+                    .status(500)
+                    .body(format!("Error making config: {}", e.to_string()))?);
         }
     };
-    Ok("Success!".to_string())
+    Ok(Response::builder()
+        .status(200)
+        .header("Access-Control-Allow-Origin", "*")
+        .body(String::from("Success"))?)
 }
 
 #[cfg(test)]
