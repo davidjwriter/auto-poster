@@ -1,4 +1,3 @@
-use lambda_http::service_fn;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -14,7 +13,7 @@ use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use openai_api_rs::v1::image::ImageGenerationRequest;
 use openai_api_rs::v1::error::APIError;
 use scraper::{Html, Selector};
-use lambda_http::{Response, Body, Error, Request};
+use lambda_http::{Response, Body, Error, Request,service_fn};
 use lambda_runtime::handler_fn;
 use tokio::fs::File;
 use tokio::time::Duration;
@@ -82,9 +81,10 @@ impl std::error::Error for FailureResponse {}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let func = service_fn(handler);
+    let func = service_fn(lambda_http_handler);
     lambda_http::run(func).await?;
-
+    let runtime_func = handler_fn(lambda_runtime_handler);
+    lambda_runtime::run(runtime_func).await?;
     Ok(())
 }
 
@@ -299,19 +299,33 @@ fn extract_json(json_string: &str) -> Option<String> {
     // If no match was found, return None
     None
 }
+async fn lambda_runtime_handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
+    Ok(worker().await?)
+}
 
+async fn lambda_http_handler(_request: Request) -> Result<Response<String>, Error> {
+    match worker().await {
+        Ok(s) => {
+            return Ok(Response::builder()
+                .status(200)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(String::from("Success"))?);
+        },
+        Err(e) => {
+            return Ok(Response::builder()
+            .status(500)
+            .body(format!("Error making config: {}", e.to_string()))?);
+        }
+    }
+}
 
-async fn handler(_request: Request) -> Result<Response<String>, Error> {
+async fn worker() -> Result<String, Error> {
     // 1. First retrieve the current contents of our newsletters
     let url = "https://davidjmeyer.substack.com/feed";
     let contents = get_current_newsletter_content(url).await;
     let clean_content = match contents {
         Ok(c) => cleanup(c.body).await,
-        Err(e) => {
-            return Ok(Response::builder()
-                .status(500)
-                .body(format!("Error making config: {}", e.to_string()))?);
-        }
+        Err(e) => return Ok(format!("Failed getting content: {:?}", e.to_string())),
     };
     match clean_content {
         Ok(c) => {
@@ -319,29 +333,16 @@ async fn handler(_request: Request) -> Result<Response<String>, Error> {
             match generate_posts(c).await {
                 Ok(p) => match add_to_db(p).await {
                     Ok(s) => println!("Response Success: {:?}", s),
-                    Err(e) => {
-                        return Ok(Response::builder()
-                            .status(500)
-                            .body(format!("Error making config: {}", e.to_string()))?);
-                    }
+                    Err(e) => return Ok(format!("Failed: {:?}", e.to_string()))
                 },
-                Err(e) => {
-                    return Ok(Response::builder()
-                        .status(500)
-                        .body(format!("Error making config: {}", e.to_string()))?);
-                }
+                Err(e) => return Ok(format!("Failed: {:?}", e.to_string())),
             };
         },
         Err(e) => {
-                return Ok(Response::builder()
-                    .status(500)
-                    .body(format!("Error making config: {}", e.to_string()))?);
+            return Ok(format!("Failed: {:?}", e.to_string()));
         }
     };
-    Ok(Response::builder()
-        .status(200)
-        .header("Access-Control-Allow-Origin", "*")
-        .body(String::from("Success"))?)
+    Ok("Success!".to_string())
 }
 
 #[cfg(test)]
