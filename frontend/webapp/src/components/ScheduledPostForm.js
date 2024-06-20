@@ -9,7 +9,7 @@ const ScheduledPostForm = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    axios.post('https://4zkgjocsu8.execute-api.us-east-1.amazonaws.com/prod/addSchedule', { post, time, recurring })
+    axios.post('https://4zkgjocsu8.execute-api.us-east-1.amazonaws.com/prod/addSchedule', { posts: [{ post, time, recurring }] })
       .then(response => {
         console.log('Scheduled post added', response.data);
         setPost('');

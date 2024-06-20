@@ -7,7 +7,7 @@ const PostForm = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    axios.post('https://4zkgjocsu8.execute-api.us-east-1.amazonaws.com/prod/add', { post })
+    axios.post('https://4zkgjocsu8.execute-api.us-east-1.amazonaws.com/prod/add', { posts: [{ post }] })
       .then(response => {
         console.log('Post added', response.data);
         setPost('');

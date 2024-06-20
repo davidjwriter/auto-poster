@@ -1,0 +1,9 @@
+/* src/components/EditablePosts.css */
+.post-textarea {
+    width: 50%; /* Set the width to 50% of the screen */
+    max-width: 50%;
+    resize: none;
+    overflow: hidden;
+    box-sizing: border-box; /* Ensure padding and border are included in the width */
+  }
+  
