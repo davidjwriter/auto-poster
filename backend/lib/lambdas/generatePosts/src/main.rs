@@ -1,3 +1,5 @@
+use lambda_http::Context;
+use lambda_runtime::LambdaEvent;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -14,7 +16,7 @@ use openai_api_rs::v1::image::ImageGenerationRequest;
 use openai_api_rs::v1::error::APIError;
 use scraper::{Html, Selector};
 use lambda_http::{Response, Body, Error, Request,service_fn};
-use lambda_runtime::handler_fn;
+use lambda_runtime::service_fn as runtime_fn;
 use tokio::fs::File;
 use tokio::time::Duration;
 use tokio::fs::File as AsyncFile;
@@ -34,7 +36,7 @@ use tiktoken_rs::cl100k_base;
 
 
 const PROMPT: &str = "Create 12 powerful short Tweets that 
-inspire conversation from this article. Respond with the 
+inspire conversation from this article. Use direct quotes as often as possible. Respond with the 
 Tweets in JSON format like this: {\"posts\": [\"post\": <str>]}
 but make sure it is proper JSON syntax.";
 
@@ -81,10 +83,13 @@ impl std::error::Error for FailureResponse {}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let func = service_fn(lambda_http_handler);
-    lambda_http::run(func).await?;
-    let runtime_func = handler_fn(lambda_runtime_handler);
-    lambda_runtime::run(runtime_func).await?;
+    let http_func = service_fn(http_handler);
+    let runtime_func = runtime_fn(runtime_handler);
+
+    let http_handle = tokio::spawn(async move { lambda_http::run(http_func).await });
+    let runtime_handle = tokio::spawn(async move { lambda_runtime::run(runtime_func).await });
+
+    let _ = tokio::try_join!(http_handle, runtime_handle)?;
     Ok(())
 }
 
@@ -299,23 +304,24 @@ fn extract_json(json_string: &str) -> Option<String> {
     // If no match was found, return None
     None
 }
-async fn lambda_runtime_handler(_event: Value, _ctx: lambda_runtime::Context) -> Result<String, Error> {
-    Ok(worker().await?)
+async fn runtime_handler(event: LambdaEvent<Value>) -> Result<(), Error> {
+    println!("Event: {:?}", event);
+    worker().await?;
+    Ok(())
 }
 
-async fn lambda_http_handler(_request: Request) -> Result<Response<String>, Error> {
+async fn http_handler(request: Request) -> Result<Response<String>, Error> {
+    println!("Request: {:?}", request);
     match worker().await {
-        Ok(s) => {
-            return Ok(Response::builder()
-                .status(200)
-                .header("Access-Control-Allow-Origin", "*")
-                .body(String::from("Success"))?);
-        },
-        Err(e) => {
-            return Ok(Response::builder()
+        Ok(_) => Ok(Response::builder()
+            .status(200)
+            .header("Access-Control-Allow-Origin", "*")
+            .body("Success".to_string())
+            .unwrap()),
+        Err(e) => Ok(Response::builder()
             .status(500)
-            .body(format!("Error making config: {}", e.to_string()))?);
-        }
+            .body(format!("Error making config: {}", e.to_string()))
+            .unwrap()),
     }
 }
 
